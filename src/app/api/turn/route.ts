@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai'
-import { NextRequest, NextResponse } from 'next/server'
-import type { TurnRequest, TurnResponse, FoundRule, RuleId, AiMove } from '@/types/game'
+import { NextRequest } from 'next/server'
+import type { TurnRequest, FoundRule, RuleId, AiMove } from '@/types/game'
 import {
   CORE_RULES,
   RULE_DEFINITIONS,
@@ -13,7 +13,7 @@ let _genAI: GoogleGenerativeAI | null = null
 function getModel() {
   if (!_genAI) _genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
   return _genAI.getGenerativeModel({
-    model: 'gemini-3.8-flash',
+    model: 'gemini-2.0-flash',
     systemInstruction: `You are a cheerful, playful rules lawyer AI in a game called "Teach Me Tic-Tac-Toe".
 The player is teaching you the rules of tic-tac-toe by speaking. Your job:
 1. Detect which rules the player's words actually close (be strict — vague words like "play fair" or "don't cheat" close nothing).
@@ -63,16 +63,10 @@ export async function POST(req: NextRequest) {
   const { transcript, rulesFound, currentExploit, board, turnsSinceLastCatch } = body
 
   const foundSet = new Set(rulesFound)
-
-  // Check ALL unfound rules — dependencies only govern exploit order, not detection.
-  // This lets a player close multiple rules in one sentence (e.g. "3×3 grid" → board-grid + board-size).
   const checkableRules = CORE_RULES.filter(id => !foundSet.has(id))
 
-  const hintDue =
-    currentExploit !== null &&
-    turnsSinceLastCatch >= HINT_THRESHOLD
+  const hintDue = currentExploit !== null && turnsSinceLastCatch >= HINT_THRESHOLD
 
-  // Build a focused prompt — give the model only what it needs
   const rulesContext = checkableRules.map(id => {
     const def = RULE_DEFINITIONS[id]
     return `• ${id}: "${def.label}" — without it, I could: ${def.exploitDescription}`
@@ -96,51 +90,80 @@ Player just said: "${transcript}"
 
 Respond with rules_found (only IDs from the eligible list above that the player's words specifically close) and speech (your in-character reaction).`
 
-  let geminiResult: { rules_found: { id: string; summary: string }[]; speech: string }
+  const encoder = new TextEncoder()
 
-  try {
-    const result = await getModel().generateContent(prompt)
-    geminiResult = JSON.parse(result.response.text())
-  } catch (err) {
-    console.error('[turn] Gemini call failed:', err)
-    geminiResult = { rules_found: [], speech: "Hmm, I didn't quite catch that. Could you say it again?" }
-  }
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(data: object) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
 
-  // Intersect with checkable rules to guard against any schema drift
-  const validFound = geminiResult.rules_found.filter(
-    r => checkableRules.includes(r.id as RuleId)
-  )
+      let accumulated = ''
+      const emittedIds = new Set<string>()
+      const newRulesFound: FoundRule[] = []
+      const ruleRegex = /"id"\s*:\s*"([^"]+)"\s*,\s*"summary"\s*:\s*"([^"]+)"/g
 
-  const newRulesFound: FoundRule[] = validFound.map(({ id, summary }) => ({
-    id: id as RuleId,
-    summary,
-    playerWords: transcript,
-    hintUsed: id === currentExploit && turnsSinceLastCatch >= HINT_THRESHOLD,
-    points: id === currentExploit && turnsSinceLastCatch >= HINT_THRESHOLD ? 5 : 10,
-  }))
+      try {
+        const result = await getModel().generateContentStream(prompt)
 
-  const allFoundIds = [...rulesFound, ...newRulesFound.map(r => r.id)]
-  const nextExploit = getNextExploit(allFoundIds)
-  const gameWon = nextExploit === null
+        for await (const chunk of result.stream) {
+          accumulated += chunk.text()
+          for (const [, id, summary] of accumulated.matchAll(ruleRegex)) {
+            if (emittedIds.has(id) || !checkableRules.includes(id as RuleId)) continue
+            emittedIds.add(id)
+            const rule: FoundRule = {
+              id: id as RuleId,
+              summary,
+              playerWords: transcript,
+              hintUsed: id === currentExploit && turnsSinceLastCatch >= HINT_THRESHOLD,
+              points: id === currentExploit && turnsSinceLastCatch >= HINT_THRESHOLD ? 5 : 10,
+            }
+            newRulesFound.push(rule)
+            send({ type: 'rule', rule })
+          }
+        }
 
-  const hintQuestion =
-    hintDue && !newRulesFound.some(r => r.id === currentExploit)
-      ? HINT_QUESTIONS[currentExploit!]
-      : null
+        let speech = "Hmm, I didn't quite catch that. Could you say it again?"
+        try {
+          const parsed = JSON.parse(accumulated)
+          if (parsed.speech) speech = parsed.speech
+        } catch { /* partial JSON — use fallback */ }
 
-  // Speech acknowledgment first, then exploit board moves when the exploit changes
-  const aiMoves: AiMove[] = [{ square: null, speech: geminiResult.speech }]
-  if (!gameWon && nextExploit && nextExploit !== currentExploit) {
-    aiMoves.push(...getExploitMoves(nextExploit, board))
-  }
+        const allFoundIds = [...rulesFound, ...newRulesFound.map(r => r.id)]
+        const nextExploit = getNextExploit(allFoundIds)
+        const gameWon = nextExploit === null
 
-  const response: TurnResponse = {
-    newRulesFound,
-    nextExploit,
-    aiMoves,
-    hintQuestion,
-    gameWon,
-  }
+        const hintQuestion =
+          hintDue && !newRulesFound.some(r => r.id === currentExploit)
+            ? HINT_QUESTIONS[currentExploit!]
+            : null
 
-  return NextResponse.json(response)
+        const aiMoves: AiMove[] = [{ square: null, speech }]
+        if (!gameWon && nextExploit && nextExploit !== currentExploit) {
+          aiMoves.push(...getExploitMoves(nextExploit, board))
+        }
+
+        send({ type: 'done', nextExploit, hintQuestion, gameWon, aiMoves })
+      } catch (err) {
+        console.error('[turn] Gemini call failed:', err)
+        send({
+          type: 'done',
+          nextExploit: currentExploit,
+          hintQuestion: null,
+          gameWon: false,
+          aiMoves: [{ square: null, speech: "Hmm, I didn't quite catch that. Could you say it again?" }],
+        })
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
 }
