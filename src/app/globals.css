@@ -1,26 +1,236 @@
 @import "tailwindcss";
 
+/* Sunny classical courtyard: sky, marble, terracotta, Mediterranean blue. Light only. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #23283d;            /* thick outlines */
+  --sky-top: #2f9be8;
+  --sky-bottom: #a9e2ff;
+  --marble: #f6f2ea;
+  --marble-shade: #d9d1c1;
+  --marble-vein: #c9c0ae;
+  --terracotta: #dd6a3d;
+  --terracotta-dark: #a8441f;
+  --terracotta-light: #f08a5d;
+  --med-blue: #1f74cc;
+  --med-blue-dark: #134f91;
+  --med-blue-light: #4ea3ef;
+  --sun: #ffd34d;
+  --sun-dark: #e3a312;
+  --leaf: #6aae46;
+  --leaf-dark: #3f7a2a;
+  --wood: #b8743a;
+  --wood-dark: #7c4a1f;
+  --wax: #43301f;
+  --wax-deep: #2f2116;
+  --scratch: #f2d9a6;
+  --skin: #f7c9a1;
+  --hair: #5a3420;
+
+  --background: var(--sky-bottom);
+  --foreground: var(--ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-ink: var(--ink);
+  --color-marble: var(--marble);
+  --color-terracotta: var(--terracotta);
+  --color-med-blue: var(--med-blue);
+  --color-scratch: var(--scratch);
+  --font-display: var(--font-lilita);
+  --font-body: var(--font-nunito);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-nunito), ui-rounded, system-ui, sans-serif;
+}
+
+/* ---------- Courtyard backdrop ---------- */
+.courtyard {
+  background:
+    linear-gradient(180deg, var(--sky-top) 0%, #63bdf5 42%, var(--sky-bottom) 72%);
+}
+
+.courtyard-floor {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 118px, rgba(120, 45, 15, 0.35) 118px 122px),
+    repeating-linear-gradient(0deg, transparent 0 58px, rgba(120, 45, 15, 0.35) 58px 62px),
+    linear-gradient(180deg, #e98a5c 0%, var(--terracotta) 100%);
+  border-top: 5px solid var(--ink);
+}
+
+.courtyard-ledge {
+  background: linear-gradient(180deg, var(--marble) 0%, var(--marble-shade) 100%);
+  border-top: 5px solid var(--ink);
+}
+
+/* ---------- Chunky outlined lettering ---------- */
+.chunky {
+  font-family: var(--font-lilita), ui-rounded, sans-serif;
+  letter-spacing: 0.01em;
+  text-shadow:
+    3px 0 0 var(--ink), -3px 0 0 var(--ink), 0 3px 0 var(--ink), 0 -3px 0 var(--ink),
+    2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink),
+    0 6px 0 var(--ink), 2px 6px 0 var(--ink), -2px 6px 0 var(--ink);
+}
+
+.chunky-sm {
+  font-family: var(--font-lilita), ui-rounded, sans-serif;
+  text-shadow:
+    2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 2px 0 var(--ink), 0 -2px 0 var(--ink),
+    1.5px 1.5px 0 var(--ink), -1.5px 1.5px 0 var(--ink), 1.5px -1.5px 0 var(--ink), -1.5px -1.5px 0 var(--ink),
+    0 4px 0 var(--ink);
+}
+
+/* ---------- Glossy pill ---------- */
+.glossy {
+  --pill: var(--med-blue);
+  --pill-light: var(--med-blue-light);
+  --pill-dark: var(--med-blue-dark);
+  position: relative;
+  border: 5px solid var(--ink);
+  border-radius: 9999px;
+  background: linear-gradient(180deg, var(--pill-light) 0%, var(--pill) 55%, var(--pill) 100%);
+  box-shadow: inset 0 -9px 0 var(--pill-dark), 0 7px 0 var(--ink);
+  transition: transform 90ms ease-out, box-shadow 90ms ease-out;
+}
+.glossy::before {
+  content: "";
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  top: 7px;
+  height: 32%;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+}
+.glossy[data-tone="terracotta"] {
+  --pill: var(--terracotta);
+  --pill-light: var(--terracotta-light);
+  --pill-dark: var(--terracotta-dark);
+}
+.glossy[data-tone="marble"] {
+  --pill: #e6dfd0;
+  --pill-light: #ffffff;
+  --pill-dark: #bfb5a1;
+}
+.glossy[data-pressed="true"] {
+  transform: translateY(5px);
+  box-shadow: inset 0 -5px 0 var(--pill-dark), 0 2px 0 var(--ink);
+}
+button.glossy:hover {
+  filter: brightness(1.06);
+}
+button.glossy:active {
+  transform: translateY(5px);
+  box-shadow: inset 0 -5px 0 var(--pill-dark), 0 2px 0 var(--ink);
+}
+
+/* ---------- Marble slab ---------- */
+.marble-slab {
+  border: 6px solid var(--ink);
+  border-radius: 34px;
+  background:
+    radial-gradient(120% 80% at 20% 10%, #ffffff 0%, transparent 55%),
+    linear-gradient(160deg, var(--marble) 0%, #ece6da 60%, #e3dccd 100%);
+  box-shadow: inset 0 -14px 0 var(--marble-shade), 0 9px 0 var(--ink);
+}
+
+/* ---------- Wax tablet ---------- */
+.tablet-frame {
+  border: 5px solid var(--ink);
+  border-radius: 26px;
+  background:
+    repeating-linear-gradient(92deg, rgba(0, 0, 0, 0.06) 0 3px, transparent 3px 11px),
+    linear-gradient(180deg, #cf8a4b 0%, var(--wood) 60%, #a5652f 100%);
+  box-shadow: inset 0 -8px 0 var(--wood-dark), 0 8px 0 var(--ink);
+}
+.tablet-wax {
+  border: 4px solid var(--wood-dark);
+  border-radius: 14px;
+  background:
+    radial-gradient(90% 60% at 30% 20%, rgba(255, 255, 255, 0.07) 0%, transparent 60%),
+    linear-gradient(180deg, var(--wax) 0%, var(--wax-deep) 100%);
+  box-shadow: inset 0 4px 10px rgba(0, 0, 0, 0.45);
+}
+.wax-groove {
+  border-bottom: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.scratched {
+  color: var(--scratch);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- Speech bubble ---------- */
+.speech {
+  border: 5px solid var(--ink);
+  border-radius: 28px;
+  background: #ffffff;
+  box-shadow: inset 0 -7px 0 #e4ecf3, 0 6px 0 var(--ink);
+}
+
+/* ---------- Animations ---------- */
+@keyframes draw-stroke {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw-stroke var(--draw-dur, 0.5s) ease-in-out var(--draw-delay, 0s) forwards;
+}
+
+@keyframes stamp {
+  0% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.stamp {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: stamp 120ms ease-out;
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.bob {
+  animation: bob 2.6s ease-in-out infinite;
+}
+
+@keyframes scratch-in {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+.scratch-in {
+  animation: scratch-in 0.7s steps(14, end) both;
+}
+
+@keyframes think-dot {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50% { transform: translateY(-5px); opacity: 1; }
+}
+.think-dot {
+  display: inline-block;
+  animation: think-dot 0.9s ease-in-out infinite;
+}
+
+@keyframes bubble-pop {
+  0% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.bubble-pop {
+  transform-origin: 30% 100%;
+  animation: bubble-pop 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw { animation-duration: 0.01s; animation-delay: 0s; }
+  .bob, .think-dot { animation: none; }
+  .scratch-in { animation: none; }
 }
