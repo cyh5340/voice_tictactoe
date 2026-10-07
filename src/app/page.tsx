@@ -111,6 +111,20 @@ export default function Home() {
       const { transcript } = await sttRes.json()
       setPlayerTranscript(transcript)
 
+      // Handle restart / quit intent before touching Gemini
+      const t = transcript.toLowerCase()
+      if (/\b(restart|start over|start again|begin again|reset|new game)\b/.test(t)) {
+        setGame(INITIAL)
+        setAiSpeech('Hold SPACE and explain the rules of tic-tac-toe to me!')
+        setPlayerTranscript('')
+        await speakText('Starting fresh! Tell me the rules.')
+        return
+      }
+      if (/\b(quit|give up|stop|exit)\b/.test(t)) {
+        setGame(prev => ({ ...prev, status: 'quit' }))
+        return
+      }
+
       const g = gameRef.current
       const req: TurnRequest = {
         transcript,
