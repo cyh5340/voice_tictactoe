@@ -114,10 +114,8 @@ export default function Home() {
       // Handle restart / quit intent before touching Gemini
       const t = transcript.toLowerCase()
       if (/\b(restart|start over|start again|begin again|reset|new game)\b/.test(t)) {
-        setGame(INITIAL)
-        setAiSpeech('Hold SPACE and explain the rules of tic-tac-toe to me!')
-        setPlayerTranscript('')
-        await speakText('Starting fresh! Tell me the rules.')
+        setGame(prev => ({ ...prev, board: emptyBoard(), status: 'playing' }))
+        await speakText('Board cleared! Keep going.')
         return
       }
       if (/\b(quit|give up|stop|exit)\b/.test(t)) {
