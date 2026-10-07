@@ -284,6 +284,10 @@ export default function Home() {
             return
           }
         }
+        if (isBoardFull(currentBoard)) {
+          await speakTextRef.current("Board's full — starting fresh!")
+          setGame(prev => ({ ...prev, board: emptyBoard() }))
+        }
       } finally {
         setIsProcessing(false)
       }

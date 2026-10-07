@@ -67,12 +67,13 @@ export function getExploitMoves(exploit: RuleId, board: Board): AiMove[] {
       return [{ square: empty[0] ?? null, symbol: 'O', speech }]
 
     case 'own-marks-only': {
-      // AI places its O, then also places the player's X
+      // AI places its O silently, then draws the player's X with speech — so the
+      // speech fires when the X actually appears, not when the O does.
       const aiSquare = empty[0] ?? null
       const playerSquare = empty[1] ?? null
       return [
-        { square: aiSquare, symbol: 'O', speech },
-        { square: playerSquare, symbol: 'X', speech: '' },
+        { square: aiSquare, symbol: 'O', speech: '' },
+        { square: playerSquare, symbol: 'X', speech },
       ]
     }
 
