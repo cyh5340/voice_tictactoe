@@ -19,7 +19,8 @@ export type Board = Cell[][]
 
 export type FoundRule = {
   id: RuleId
-  playerWords: string
+  summary: string      // 3-6 word summary shown in the rules panel
+  playerWords: string  // full transcript shown in expandable
   hintUsed: boolean
   points: number
 }

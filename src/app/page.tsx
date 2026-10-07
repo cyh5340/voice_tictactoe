@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GameState, Cell, TurnRequest, TurnResponse } from '@/types/game'
 import { CORE_RULES, EXTRA_CREDIT_RULES, computeScore } from '@/lib/rules'
 import PlayScreen from '@/components/PlayScreen'
@@ -9,6 +9,42 @@ import { useRuleCelebration, type MascotExpression } from '@/components/Mascot'
 
 function emptyBoard(): Cell[][] {
   return [[null, null, null], [null, null, null], [null, null, null]]
+}
+
+// Fish Audio ASR requires WAV/MP3 — browsers record webm/opus by default.
+// Decode via Web Audio API and re-encode as 16-bit PCM WAV.
+async function toWav(blob: Blob): Promise<Blob> {
+  const arrayBuffer = await blob.arrayBuffer()
+  const audioCtx = new AudioContext()
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+  await audioCtx.close()
+
+  const numChannels = 1
+  const sampleRate = audioBuffer.sampleRate
+  const samples = audioBuffer.getChannelData(0)
+  const bytesPerSample = 2
+  const dataSize = samples.length * bytesPerSample
+  const buf = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buf)
+
+  const str = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i))
+  }
+  str(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); str(8, 'WAVE')
+  str(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true)
+  view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true)
+  view.setUint16(32, numChannels * bytesPerSample, true); view.setUint16(34, 16, true)
+  str(36, 'data'); view.setUint32(40, dataSize, true)
+
+  let offset = 44
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]))
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+    offset += 2
+  }
+
+  return new Blob([buf], { type: 'audio/wav' })
 }
 
 const INITIAL: GameState = {
@@ -65,8 +101,9 @@ export default function Home() {
   async function handleAudio(audio: Blob) {
     setIsProcessing(true)
     try {
+      const wav = await toWav(audio)
       const fd = new FormData()
-      fd.append('audio', audio)
+      fd.append('audio', wav, 'audio.wav')
       const sttRes = await fetch('/api/stt', { method: 'POST', body: fd })
       if (!sttRes.ok) throw new Error('STT failed')
       const { transcript } = await sttRes.json()
@@ -151,16 +188,45 @@ export default function Home() {
     }
   }
 
-  function handleCellClick(row: number, col: number) {
+  const speakTextRef = useRef<(text: string) => Promise<void>>(async () => {})
+  useEffect(() => { speakTextRef.current = speakText }, [speakText])
+
+  async function handleCellClick(row: number, col: number) {
     const g = gameRef.current
     if (g.status !== 'playing' && g.status !== 'catching') return
     if (isProcessing) return
     if (g.board[row][col] !== null) return
-    setGame(prev => {
-      const nb = prev.board.map(r => [...r]) as Cell[][]
-      nb[row][col] = 'X'
-      return { ...prev, board: nb, turnsSinceLastCatch: prev.turnsSinceLastCatch + 1, status: 'catching' }
-    })
+
+    // Place player's mark
+    const newBoard = g.board.map(r => [...r]) as Cell[][]
+    newBoard[row][col] = 'X'
+    setGame(prev => ({
+      ...prev,
+      board: newBoard,
+      turnsSinceLastCatch: prev.turnsSinceLastCatch + 1,
+      status: 'catching',
+    }))
+
+    // AI responds with its move
+    if (g.currentExploit) {
+      setIsProcessing(true)
+      try {
+        const moves = getExploitMoves(g.currentExploit, newBoard)
+        for (const move of moves) {
+          if (move.square) {
+            const [r, c] = move.square
+            setGame(prev => {
+              const nb = prev.board.map(row => [...row]) as Cell[][]
+              nb[r][c] = move.symbol ?? 'O'
+              return { ...prev, board: nb }
+            })
+          }
+          if (move.speech) await speakTextRef.current(move.speech)
+        }
+      } finally {
+        setIsProcessing(false)
+      }
+    }
   }
 
   // Push-to-talk: spacebar + Escape to quit
@@ -226,24 +292,140 @@ export default function Home() {
   }
 
   return (
-    <PlayScreen
-      game={game}
-      gridSize={gridSize}
-      coreRules={CORE_RULES}
-      extraFound={extraFound}
-      aiSpeech={aiSpeech}
-      playerTranscript={playerTranscript}
-      isRecording={isRecording}
-      isProcessing={isProcessing}
-      expression={expression}
-      canClickCell={(r, c) => {
-        const inBounds = r < 3 && c < 3
-        const cell = inBounds ? game.board[r][c] : null
-        return inBounds && !cell
-          && (game.status === 'playing' || game.status === 'catching')
-          && !isProcessing
-      }}
-      onCellClick={handleCellClick}
-    />
+    <main className="flex h-screen w-screen bg-zinc-950 text-white overflow-hidden">
+      {/* Game area */}
+      <div className="flex flex-col flex-1 items-center justify-center gap-6 p-8 min-w-0">
+        {/* AI speech bubble */}
+        <div className="w-full max-w-lg bg-zinc-800 rounded-2xl px-5 py-4 min-h-16">
+          <p className="text-xs text-zinc-500 mb-1 uppercase tracking-wider font-medium">AI says</p>
+          <p className="text-zinc-100 leading-relaxed">{aiSpeech}</p>
+        </div>
+
+        {/* Board */}
+        <div className="flex items-center justify-center">
+          {gridSize === 0 ? (
+            <div className="w-64 h-64 rounded-xl border-2 border-dashed border-zinc-700 flex items-center justify-center">
+              <span className="text-zinc-600 text-sm">No board yet…</span>
+            </div>
+          ) : (
+            <div
+              className="grid gap-2"
+              style={{ gridTemplateColumns: `repeat(${gridSize}, 5rem)` }}
+            >
+              {Array.from({ length: gridSize }).flatMap((_, r) =>
+                Array.from({ length: gridSize }).map((_, c) => {
+                  const inBounds = r < 3 && c < 3
+                  const cell = inBounds ? game.board[r][c] : null
+                  const canClick = inBounds && !cell
+                    && (game.status === 'playing' || game.status === 'catching')
+                    && !isProcessing
+                  return (
+                    <button
+                      key={`${r}-${c}`}
+                      onClick={() => canClick && handleCellClick(r, c)}
+                      className={[
+                        'w-20 h-20 rounded-lg border-2 flex items-center justify-center text-3xl font-bold transition-colors',
+                        inBounds ? 'border-zinc-600 bg-zinc-900' : 'border-zinc-800 bg-zinc-950 opacity-20',
+                        canClick ? 'hover:bg-zinc-700 cursor-pointer' : 'cursor-default',
+                        cell === 'X' ? 'text-blue-400' : 'text-red-400',
+                      ].join(' ')}
+                    >
+                      {cell ?? ''}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Player transcript */}
+        {playerTranscript && (
+          <div className="w-full max-w-lg bg-zinc-900 rounded-xl px-4 py-3 text-sm">
+            <span className="text-zinc-600">You said: </span>
+            <span className="text-zinc-300">{playerTranscript}</span>
+          </div>
+        )}
+
+        {/* Voice control */}
+        <div className="flex flex-col items-center gap-1.5">
+          <div className={[
+            'px-6 py-3 rounded-full text-sm font-medium border transition-all select-none',
+            isRecording
+              ? 'bg-red-600 border-red-500 text-white animate-pulse'
+              : isProcessing
+              ? 'bg-zinc-700 border-zinc-600 text-zinc-400'
+              : 'bg-zinc-800 border-zinc-700 text-zinc-300',
+          ].join(' ')}>
+            {isRecording ? '● Recording…' : isProcessing ? 'Thinking…' : 'Hold SPACE to talk'}
+          </div>
+          <p className="text-xs text-zinc-600">
+            {game.status === 'explaining' && 'Explain the rules of tic-tac-toe'}
+            {game.status === 'playing' && 'Click a square to place your X, or hold SPACE to speak'}
+            {game.status === 'catching' && 'Spot the rule the AI broke? Hold SPACE and say it!'}
+          </p>
+        </div>
+      </div>
+
+      {/* Rules panel */}
+      <aside className="w-72 bg-zinc-900 border-l border-zinc-800 flex flex-col shrink-0">
+        <div className="px-5 py-4 border-b border-zinc-800">
+          <h2 className="font-semibold text-zinc-200">Rules</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            {coreFound.length}/10 core · {game.totalScore} pts
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {CORE_RULES.map((ruleId, i) => {
+            const found = game.rulesFound.find(r => r.id === ruleId)
+            return (
+              <div
+                key={ruleId}
+                className={[
+                  'rounded-lg px-3 py-2.5 text-sm border transition-colors',
+                  found ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-950 border-zinc-800',
+                ].join(' ')}
+              >
+                <div className="flex items-start gap-2">
+                  <span className={[
+                    'mt-0.5 text-xs font-mono shrink-0 w-4 text-center',
+                    found ? 'text-green-400' : 'text-zinc-700',
+                  ].join(' ')}>
+                    {found ? '✓' : i + 1}
+                  </span>
+                  <div className="min-w-0">
+                    {found ? (
+                      <>
+                        <p className="text-zinc-200 leading-snug break-words">{found.playerWords}</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          {found.hintUsed && 'hinted · '}{found.points} pts
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-zinc-700">???</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          {extraFound.length > 0 && (
+            <div className="pt-3 mt-1 border-t border-zinc-800">
+              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">+ Bonus</p>
+              <div className="space-y-2">
+                {extraFound.map(r => (
+                  <div key={r.id} className="rounded-lg px-3 py-2.5 text-sm bg-amber-950 border border-amber-800">
+                    <p className="text-amber-200 leading-snug break-words">★ {r.playerWords}</p>
+                    <p className="text-xs text-amber-700 mt-0.5">+{r.points} pts</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </aside>
+    </main>
   )
 }
