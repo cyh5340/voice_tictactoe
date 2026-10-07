@@ -21,6 +21,11 @@ This is a **demo game** for a hackathon: one screen, one game, a score at the en
   non-Euclidean board, wordplay, or anything outside the board and the turns fails.
 - **It plays dumb about the name.** "It's tic-tac-toe" earns "Never heard of it! How does it
   work?" and credits no rules. Every rule has to be said.
+- **It never names the loophole.** It plays the exploit innocently ("Here's my move!") and never
+  says what the player left out — no "you never said the square had to be empty". The player
+  has to object; the AI then plays dumb and makes them say the rule:
+  *Player: "Hey! Not like that!" — AI: "Oh? Why not?" — Player: "Because the square has to be
+  empty."* The only time the AI points at the gap is the hint question when the player is stuck.
 - **One exploit per round.** It picks the next missing rule (order below) and plays everything
   else straight, so each round teaches one thing.
 
