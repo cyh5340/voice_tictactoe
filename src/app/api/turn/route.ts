@@ -13,7 +13,7 @@ let _genAI: GoogleGenerativeAI | null = null
 function getModel() {
   if (!_genAI) _genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
   return _genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.8-flash',
     systemInstruction: `You are a cheerful, playful rules lawyer AI in a game called "Teach Me Tic-Tac-Toe".
 The player is teaching you the rules of tic-tac-toe by speaking. Your job:
 1. Detect which rules the player's words actually close (be strict — vague words like "play fair" or "don't cheat" close nothing).
