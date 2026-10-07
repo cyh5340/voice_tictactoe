@@ -8,10 +8,10 @@ import ResultScreen from '@/components/ResultScreen'
 import { MASCOT_EXPRESSIONS, type MascotExpression } from '@/components/Mascot'
 
 const RULES: FoundRule[] = [
-  { id: 'board-grid', playerWords: 'you draw a 3 by 3 grid', hintUsed: false, points: 10 },
-  { id: 'board-size', playerWords: 'you draw a 3 by 3 grid', hintUsed: false, points: 10 },
-  { id: 'take-turns', playerWords: 'we take turns', hintUsed: false, points: 10 },
-  { id: 'own-marks-only', playerWords: 'you can only draw your own mark', hintUsed: true, points: 5 },
+  { id: 'board-grid', summary: '3×3 grid', playerWords: 'you draw a 3 by 3 grid', hintUsed: false, points: 10 },
+  { id: 'board-size', summary: '3 columns, 3 rows', playerWords: 'you draw a 3 by 3 grid', hintUsed: false, points: 10 },
+  { id: 'take-turns', summary: 'players take turns', playerWords: 'we take turns', hintUsed: false, points: 10 },
+  { id: 'own-marks-only', summary: 'only draw your own mark', playerWords: 'you can only draw your own mark', hintUsed: true, points: 5 },
 ]
 
 const BOARD: Cell[][] = [

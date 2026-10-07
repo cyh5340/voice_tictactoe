@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { GameState, Cell, TurnRequest, TurnResponse } from '@/types/game'
+import type { GameState, Cell, TurnRequest, FoundRule } from '@/types/game'
 import { CORE_RULES, EXTRA_CREDIT_RULES, computeScore } from '@/lib/rules'
+import { getExploitMoves, checkWin, isBoardFull } from '@/lib/board'
 import PlayScreen from '@/components/PlayScreen'
 import ResultScreen from '@/components/ResultScreen'
 import { useRuleCelebration, type MascotExpression } from '@/components/Mascot'
@@ -125,38 +126,62 @@ export default function Home() {
         body: JSON.stringify(req),
       })
       if (!turnRes.ok) throw new Error('Turn failed')
-      const data: TurnResponse = await turnRes.json()
 
-      const allRules = [...g.rulesFound, ...data.newRulesFound]
-      const gotNewRules = data.newRulesFound.length > 0
+      // Read SSE stream — rules light up as they're detected
+      const reader = turnRes.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      const newRules: FoundRule[] = []
 
-      setGame(prev => ({
-        ...prev,
-        rulesFound: allRules,
-        currentExploit: data.nextExploit,
-        totalScore: computeScore(allRules),
-        status: data.gameWon ? 'won' : 'playing',
-        roundsPlayed: prev.roundsPlayed + (gotNewRules ? 1 : 0),
-        turnsSinceLastCatch: gotNewRules ? 0 : prev.turnsSinceLastCatch,
-        board: gotNewRules ? emptyBoard() : prev.board,
-      }))
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          let event: Record<string, unknown>
+          try { event = JSON.parse(line.slice(6)) } catch { continue }
 
-      if (data.hintQuestion) {
-        await speakText(data.hintQuestion)
-      }
+          if (event.type === 'rule') {
+            const rule = event.rule as FoundRule
+            newRules.push(rule)
+            setGame(prev => ({
+              ...prev,
+              rulesFound: [...prev.rulesFound, rule],
+              totalScore: computeScore([...prev.rulesFound, rule]),
+            }))
+          } else if (event.type === 'done') {
+            const gotNewRules = newRules.length > 0
+            setGame(prev => ({
+              ...prev,
+              currentExploit: event.nextExploit as GameState['currentExploit'],
+              status: event.gameWon ? 'won' : 'playing',
+              roundsPlayed: prev.roundsPlayed + (gotNewRules ? 1 : 0),
+              turnsSinceLastCatch: gotNewRules ? 0 : prev.turnsSinceLastCatch,
+              board: gotNewRules ? emptyBoard() : prev.board,
+            }))
 
-      // Execute AI moves sequentially: board update + audio in sync
-      for (const move of data.aiMoves) {
-        if (move.square) {
-          const [r, c] = move.square
-          const symbol = move.symbol ?? 'O'
-          setGame(prev => {
-            const nb = prev.board.map(row => [...row]) as Cell[][]
-            nb[r][c] = symbol
-            return { ...prev, board: nb, status: 'catching' }
-          })
+            if (event.hintQuestion) {
+              await speakText(event.hintQuestion as string)
+            }
+
+            const aiMoves = event.aiMoves as Array<{ square: [number, number] | null; symbol?: 'X' | 'O'; speech: string }>
+            for (const move of aiMoves) {
+              if (move.square) {
+                const [mr, mc] = move.square
+                const symbol = move.symbol ?? 'O'
+                setGame(prev => {
+                  const nb = prev.board.map(row => [...row]) as Cell[][]
+                  nb[mr][mc] = symbol
+                  return { ...prev, board: nb, status: 'catching' }
+                })
+              }
+              await speakText(move.speech)
+            }
+          }
         }
-        await speakText(move.speech)
       }
     } catch (err) {
       console.error('Turn error:', err)
@@ -197,7 +222,6 @@ export default function Home() {
     if (isProcessing) return
     if (g.board[row][col] !== null) return
 
-    // Place player's mark
     const newBoard = g.board.map(r => [...r]) as Cell[][]
     newBoard[row][col] = 'X'
     setGame(prev => ({
@@ -207,21 +231,41 @@ export default function Home() {
       status: 'catching',
     }))
 
-    // AI responds with its move
+    if (checkWin(newBoard, 'X')) {
+      await speakTextRef.current("Three in a row — you win this round! The board resets.")
+      setGame(prev => ({ ...prev, board: emptyBoard() }))
+      return
+    }
+    if (isBoardFull(newBoard)) {
+      await speakTextRef.current("Board's full and no winner — it's a draw! Starting fresh.")
+      setGame(prev => ({ ...prev, board: emptyBoard() }))
+      return
+    }
+
     if (g.currentExploit) {
       setIsProcessing(true)
       try {
+        let currentBoard = newBoard
         const moves = getExploitMoves(g.currentExploit, newBoard)
         for (const move of moves) {
           if (move.square) {
-            const [r, c] = move.square
+            const [mr, mc] = move.square
+            const symbol = move.symbol ?? 'O'
+            currentBoard = currentBoard.map(r => [...r]) as Cell[][]
+            currentBoard[mr][mc] = symbol
             setGame(prev => {
-              const nb = prev.board.map(row => [...row]) as Cell[][]
-              nb[r][c] = move.symbol ?? 'O'
+              const nb = prev.board.map(r => [...r]) as Cell[][]
+              nb[mr][mc] = symbol
               return { ...prev, board: nb }
             })
           }
           if (move.speech) await speakTextRef.current(move.speech)
+
+          if (move.square && checkWin(currentBoard, 'O')) {
+            await speakTextRef.current("Ha! Three in a row for me! Resetting the board.")
+            setGame(prev => ({ ...prev, board: emptyBoard() }))
+            return
+          }
         }
       } finally {
         setIsProcessing(false)
@@ -397,8 +441,12 @@ export default function Home() {
                   <div className="min-w-0">
                     {found ? (
                       <>
-                        <p className="text-zinc-200 leading-snug break-words">{found.playerWords}</p>
-                        <p className="text-xs text-zinc-500 mt-0.5">
+                        <p className="text-zinc-200 leading-snug break-words">{found.summary}</p>
+                        <details className="mt-0.5">
+                          <summary className="text-xs text-zinc-600 cursor-pointer select-none hover:text-zinc-400">your words</summary>
+                          <p className="text-xs text-zinc-500 mt-0.5 italic">"{found.playerWords}"</p>
+                        </details>
+                        <p className="text-xs text-zinc-600 mt-0.5">
                           {found.hintUsed && 'hinted · '}{found.points} pts
                         </p>
                       </>
