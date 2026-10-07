@@ -20,11 +20,12 @@ export const EXTRA_CREDIT_RULES: RuleId[] = [
   'win-directions',
 ]
 
-// Exploit order from the game design spec
+// Exploit order from the game design spec.
+// board-size comes before own-symbol: it's "first thing on screen, instantly funny".
 export const EXPLOIT_ORDER: RuleId[] = [
   'board-grid',
-  'own-symbol',
   'board-size',
+  'own-symbol',
   'own-marks-only',
   'take-turns',
   'one-mark-per-turn',
@@ -144,8 +145,8 @@ export const EXPLOIT_LINES: Record<RuleId, string[]> = {
     "Let's both use X — that way we match! Your turn first.",
   ],
   'own-marks-only': [
-    "I'll draw your O here for you — just being helpful!",
-    "Let me place your O there. You're welcome!",
+    "I'll draw your X here for you — just being helpful!",
+    "Let me place your X there. You're welcome!",
   ],
   'take-turns': [
     "My turn! And… my turn again! And one more for good measure.",

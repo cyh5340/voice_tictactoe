@@ -28,6 +28,7 @@ const GAME: GameState = {
   roundsPlayed: 3,
   totalScore: computeScore(RULES),
   turnsSinceLastCatch: 1,
+  conversationLog: [],
 }
 
 type Search = { [key: string]: string | string[] | undefined }

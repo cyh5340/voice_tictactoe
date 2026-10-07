@@ -41,6 +41,7 @@ export type GameState = {
   roundsPlayed: number
   totalScore: number
   turnsSinceLastCatch: number
+  conversationLog: string[]  // player transcripts since last rule was found
 }
 
 // /api/stt
@@ -61,6 +62,7 @@ export type TurnRequest = {
   board: Board
   roundsPlayed: number
   turnsSinceLastCatch: number
+  conversationLog: string[]  // prior transcripts this phase
 }
 
 export type TurnResponse = {

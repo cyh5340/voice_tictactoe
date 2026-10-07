@@ -56,6 +56,7 @@ const INITIAL: GameState = {
   roundsPlayed: 0,
   totalScore: 0,
   turnsSinceLastCatch: 0,
+  conversationLog: [],
 }
 
 export default function Home() {
@@ -118,6 +119,7 @@ export default function Home() {
         board: g.board,
         roundsPlayed: g.roundsPlayed,
         turnsSinceLastCatch: g.turnsSinceLastCatch,
+        conversationLog: g.conversationLog,
       }
 
       const turnRes = await fetch('/api/turn', {
@@ -161,6 +163,8 @@ export default function Home() {
               roundsPlayed: prev.roundsPlayed + (gotNewRules ? 1 : 0),
               turnsSinceLastCatch: gotNewRules ? 0 : prev.turnsSinceLastCatch,
               board: gotNewRules ? emptyBoard() : prev.board,
+              // AI found rules → new phase, start fresh log. No rules found → accumulate.
+              conversationLog: gotNewRules ? [] : [...prev.conversationLog, transcript],
             }))
 
             if (event.hintQuestion) {
@@ -191,6 +195,7 @@ export default function Home() {
   }
 
   async function speakText(text: string) {
+    if (!text.trim()) return
     setAiSpeech(text)
     try {
       const res = await fetch('/api/tts', {

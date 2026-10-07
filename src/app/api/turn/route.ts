@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { NextRequest } from 'next/server'
 import type { TurnRequest, FoundRule, RuleId, AiMove } from '@/types/game'
 import {
@@ -12,47 +12,15 @@ import { getExploitMoves } from '@/lib/board'
 let _genAI: GoogleGenerativeAI | null = null
 function getModel() {
   if (!_genAI) _genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+  // No responseSchema — plain text streams token-by-token; JSON schema buffers the full response first.
   return _genAI.getGenerativeModel({
     model: 'gemini-3.8-flash',
     systemInstruction: `You are a cheerful, playful rules lawyer AI in a game called "Teach Me Tic-Tac-Toe".
-The player is teaching you the rules of tic-tac-toe by speaking. Your job:
-1. Detect which rules the player's words actually close (be strict — vague words like "play fair" or "don't cheat" close nothing).
-2. Respond in character: delighted by loopholes, never mean, always short (1-2 sentences max).
+The player is teaching you the rules of tic-tac-toe by speaking across multiple turns. Your job:
+1. Detect which rules are now closed, considering the player's ENTIRE explanation so far (all turns combined, not just the latest). Be strict — vague words like "play fair" or "don't cheat" close nothing, but credit accumulates across turns.
+2. Respond in character: delighted by loopholes, never mean. ONE short sentence only — 10 words max.
 You only know what you are told. Never invent board state or rules beyond what is provided.`,
-    generationConfig: {
-      temperature: 0.9,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          rules_found: {
-            type: SchemaType.ARRAY,
-            description: 'Rules the transcript specifically closes. Empty array if none.',
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                id: {
-                  type: SchemaType.STRING,
-                  format: 'enum',
-                  enum: CORE_RULES,
-                  description: 'The rule ID.',
-                },
-                summary: {
-                  type: SchemaType.STRING,
-                  description: 'A 3-6 word summary of what the player said that closes this rule. E.g. "3×3 grid" or "take turns, one mark".',
-                },
-              },
-              required: ['id', 'summary'],
-            },
-          },
-          speech: {
-            type: SchemaType.STRING,
-            description: 'Your in-character response to the player. 1-2 sentences, playful and reactive.',
-          },
-        },
-        required: ['rules_found', 'speech'],
-      },
-    },
+    generationConfig: { temperature: 0.9 },
   })
 }
 
@@ -60,7 +28,7 @@ const HINT_THRESHOLD = 2
 
 export async function POST(req: NextRequest) {
   const body: TurnRequest = await req.json()
-  const { transcript, rulesFound, currentExploit, board, turnsSinceLastCatch } = body
+  const { transcript, rulesFound, currentExploit, board, turnsSinceLastCatch, conversationLog } = body
 
   const foundSet = new Set(rulesFound)
   const checkableRules = CORE_RULES.filter(id => !foundSet.has(id))
@@ -77,18 +45,34 @@ export async function POST(req: NextRequest) {
     : 'No active exploit yet — the player is still explaining the basics.'
 
   const hintLine = hintDue
-    ? `The player has struggled for ${turnsSinceLastCatch} turns without catching the exploit. If they still haven't closed it, include the hint: "${HINT_QUESTIONS[currentExploit!]}"`
+    ? `The player has struggled for ${turnsSinceLastCatch} turns without catching the exploit. If they still haven't closed it, end your SPEECH with the hint question: "${HINT_QUESTIONS[currentExploit!]}"`
+    : ''
+
+  const priorContext = conversationLog && conversationLog.length > 0
+    ? `What the player has said earlier this session:\n${conversationLog.map(t => `- "${t}"`).join('\n')}\n\n`
     : ''
 
   const prompt = `${exploitLine}
 ${hintLine}
 
-Rules the player still needs to explain (only these are eligible to be found):
+Rules the player still needs to explain (ONLY these rule IDs are valid):
 ${rulesContext || '(none left — game is almost won)'}
 
-Player just said: "${transcript}"
+${priorContext}Player just said: "${transcript}"
 
-Respond with rules_found (only IDs from the eligible list above that the player's words specifically close) and speech (your in-character reaction).`
+Evaluate rules based on the FULL conversation above (all prior turns + this turn combined).
+
+Output format — follow it exactly:
+1. For each rule from the list above that the player's words specifically close, output one line:
+   RULE: <rule-id> | <3-6 word summary of what they said>
+2. Then output your in-character reaction (1-2 sentences) on a line starting with:
+   SPEECH: <your response>
+
+If no rules were closed, skip the RULE lines and go straight to SPEECH.
+
+Example:
+RULE: board-size | exactly three by three
+SPEECH: Oh, so specific! I've been using a 4×4 this whole time!`
 
   const encoder = new TextEncoder()
 
@@ -98,17 +82,28 @@ Respond with rules_found (only IDs from the eligible list above that the player'
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
 
-      let accumulated = ''
       const emittedIds = new Set<string>()
       const newRulesFound: FoundRule[] = []
-      const ruleRegex = /"id"\s*:\s*"([^"]+)"\s*,\s*"summary"\s*:\s*"([^"]+)"/g
+      // lineBuffer accumulates a partial line until a newline arrives
+      let lineBuffer = ''
+      let fullText = ''
 
       try {
         const result = await getModel().generateContentStream(prompt)
 
         for await (const chunk of result.stream) {
-          accumulated += chunk.text()
-          for (const [, id, summary] of accumulated.matchAll(ruleRegex)) {
+          const text = chunk.text()
+          fullText += text
+          lineBuffer += text
+
+          // Process all complete lines; keep the last (possibly incomplete) fragment
+          const lines = lineBuffer.split('\n')
+          lineBuffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            const m = line.match(/^RULE:\s*(\S+)\s*\|\s*(.+?)\s*$/)
+            if (!m) continue
+            const [, id, summary] = m
             if (emittedIds.has(id) || !checkableRules.includes(id as RuleId)) continue
             emittedIds.add(id)
             const rule: FoundRule = {
@@ -123,11 +118,30 @@ Respond with rules_found (only IDs from the eligible list above that the player'
           }
         }
 
-        let speech = "Hmm, I didn't quite catch that. Could you say it again?"
-        try {
-          const parsed = JSON.parse(accumulated)
-          if (parsed.speech) speech = parsed.speech
-        } catch { /* partial JSON — use fallback */ }
+        // Check remaining lineBuffer for a RULE line too
+        const m = lineBuffer.match(/^RULE:\s*(\S+)\s*\|\s*(.+?)\s*$/)
+        if (m) {
+          const [, id, summary] = m
+          if (!emittedIds.has(id) && checkableRules.includes(id as RuleId)) {
+            emittedIds.add(id)
+            const rule: FoundRule = {
+              id: id as RuleId,
+              summary,
+              playerWords: transcript,
+              hintUsed: id === currentExploit && turnsSinceLastCatch >= HINT_THRESHOLD,
+              points: id === currentExploit && turnsSinceLastCatch >= HINT_THRESHOLD ? 5 : 10,
+            }
+            newRulesFound.push(rule)
+            send({ type: 'rule', rule })
+          }
+        }
+
+        const speechMatch = (fullText + lineBuffer).match(/^SPEECH:\s*(.+)$/m)
+        // Gemini sometimes echoes the label on the same line: "...text?SPEECH: ...text?"
+        // Strip everything from the second SPEECH: onwards.
+        const speech = (speechMatch ? speechMatch[1] : '')
+          .replace(/\s*SPEECH:.*$/i, '')
+          .trim() || "Hmm, I didn't quite catch that. Could you say it again?"
 
         const allFoundIds = [...rulesFound, ...newRulesFound.map(r => r.id)]
         const nextExploit = getNextExploit(allFoundIds)
