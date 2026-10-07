@@ -153,8 +153,9 @@ One screen; the player can talk at any moment, including mid-move.
   that closes two rules fills two slots.
 - **Bottom:** a conversation strip with the last 2–3 lines (player and AI) and a listening
   indicator.
-- **The exploit is shown on the board:** the offending square or mark gets a highlight ring and a
-  short tag (e.g. "O drawn on top of your X").
+- **The exploit is not labelled.** The AI's move is just drawn — no words on the board say what
+  is wrong (that would give the rule away). Once the player objects ("Hey!"), the square being
+  argued about gets a ring so the audience can follow, still with no words.
 - **Top corner:** player name and difficulty, small. **Esc:** back to the menu.
 - **Marking:** the player clicks a square and their X appears instantly.
 - **The AI draws.** The grid and the AI's marks appear stroke by stroke, about half a second per
