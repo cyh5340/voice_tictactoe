@@ -60,7 +60,7 @@ export default function PlayScreen({
             />
           </div>
           <div className="mt-auto flex flex-col items-center gap-3">
-            <p className="h-[34px] max-w-[600px] truncate px-1 leading-[28px] chunky-sm text-[20px] text-white">
+            <p className="h-[34px] max-w-[600px] truncate px-1 leading-[28px] chunky-sm text-[20px] text-white" title={playerTranscript || undefined}>
               {playerTranscript && <>You: “{playerTranscript}”</>}
             </p>
             <TalkButton isRecording={isRecording} isProcessing={isProcessing} />

@@ -32,6 +32,12 @@ export default function Board({ board, gridSize, canClick, onCellClick, ghostX =
         <path d="M60 -2 C56 18 66 30 62 52" fill="none" stroke="var(--marble-vein)" strokeWidth="0.3" />
       </svg>
 
+      {n === 0 && (
+        <p className="absolute inset-0 flex items-center justify-center font-display text-[26px] text-[var(--ink)] opacity-30">
+          No board yet…
+        </p>
+      )}
+
       {n > 0 && (
         <div className="relative h-full w-full">
           <svg

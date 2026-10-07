@@ -336,144 +336,24 @@ export default function Home() {
   }
 
   return (
-    <main className="flex h-screen w-screen bg-zinc-950 text-white overflow-hidden">
-      {/* Game area */}
-      <div className="flex flex-col flex-1 items-center justify-center gap-6 p-8 min-w-0">
-        {/* AI speech bubble */}
-        <div className="w-full max-w-lg bg-zinc-800 rounded-2xl px-5 py-4 min-h-16">
-          <p className="text-xs text-zinc-500 mb-1 uppercase tracking-wider font-medium">AI says</p>
-          <p className="text-zinc-100 leading-relaxed">{aiSpeech}</p>
-        </div>
-
-        {/* Board */}
-        <div className="flex items-center justify-center">
-          {gridSize === 0 ? (
-            <div className="w-64 h-64 rounded-xl border-2 border-dashed border-zinc-700 flex items-center justify-center">
-              <span className="text-zinc-600 text-sm">No board yet…</span>
-            </div>
-          ) : (
-            <div
-              className="grid gap-2"
-              style={{ gridTemplateColumns: `repeat(${gridSize}, 5rem)` }}
-            >
-              {Array.from({ length: gridSize }).flatMap((_, r) =>
-                Array.from({ length: gridSize }).map((_, c) => {
-                  const inBounds = r < 3 && c < 3
-                  const cell = inBounds ? game.board[r][c] : null
-                  const canClick = inBounds && !cell
-                    && (game.status === 'playing' || game.status === 'catching')
-                    && !isProcessing
-                  return (
-                    <button
-                      key={`${r}-${c}`}
-                      onClick={() => canClick && handleCellClick(r, c)}
-                      className={[
-                        'w-20 h-20 rounded-lg border-2 flex items-center justify-center text-3xl font-bold transition-colors',
-                        inBounds ? 'border-zinc-600 bg-zinc-900' : 'border-zinc-800 bg-zinc-950 opacity-20',
-                        canClick ? 'hover:bg-zinc-700 cursor-pointer' : 'cursor-default',
-                        cell === 'X' ? 'text-blue-400' : 'text-red-400',
-                      ].join(' ')}
-                    >
-                      {cell ?? ''}
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Player transcript */}
-        {playerTranscript && (
-          <div className="w-full max-w-lg bg-zinc-900 rounded-xl px-4 py-3 text-sm">
-            <span className="text-zinc-600">You said: </span>
-            <span className="text-zinc-300">{playerTranscript}</span>
-          </div>
-        )}
-
-        {/* Voice control */}
-        <div className="flex flex-col items-center gap-1.5">
-          <div className={[
-            'px-6 py-3 rounded-full text-sm font-medium border transition-all select-none',
-            isRecording
-              ? 'bg-red-600 border-red-500 text-white animate-pulse'
-              : isProcessing
-              ? 'bg-zinc-700 border-zinc-600 text-zinc-400'
-              : 'bg-zinc-800 border-zinc-700 text-zinc-300',
-          ].join(' ')}>
-            {isRecording ? '● Recording…' : isProcessing ? 'Thinking…' : 'Hold SPACE to talk'}
-          </div>
-          <p className="text-xs text-zinc-600">
-            {game.status === 'explaining' && 'Explain the rules of tic-tac-toe'}
-            {game.status === 'playing' && 'Click a square to place your X, or hold SPACE to speak'}
-            {game.status === 'catching' && 'Spot the rule the AI broke? Hold SPACE and say it!'}
-          </p>
-        </div>
-      </div>
-
-      {/* Rules panel */}
-      <aside className="w-72 bg-zinc-900 border-l border-zinc-800 flex flex-col shrink-0">
-        <div className="px-5 py-4 border-b border-zinc-800">
-          <h2 className="font-semibold text-zinc-200">Rules</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            {coreFound.length}/10 core · {game.totalScore} pts
-          </p>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {CORE_RULES.map((ruleId, i) => {
-            const found = game.rulesFound.find(r => r.id === ruleId)
-            return (
-              <div
-                key={ruleId}
-                className={[
-                  'rounded-lg px-3 py-2.5 text-sm border transition-colors',
-                  found ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-950 border-zinc-800',
-                ].join(' ')}
-              >
-                <div className="flex items-start gap-2">
-                  <span className={[
-                    'mt-0.5 text-xs font-mono shrink-0 w-4 text-center',
-                    found ? 'text-green-400' : 'text-zinc-700',
-                  ].join(' ')}>
-                    {found ? '✓' : i + 1}
-                  </span>
-                  <div className="min-w-0">
-                    {found ? (
-                      <>
-                        <p className="text-zinc-200 leading-snug break-words">{found.summary}</p>
-                        <details className="mt-0.5">
-                          <summary className="text-xs text-zinc-600 cursor-pointer select-none hover:text-zinc-400">your words</summary>
-                          <p className="text-xs text-zinc-500 mt-0.5 italic">"{found.playerWords}"</p>
-                        </details>
-                        <p className="text-xs text-zinc-600 mt-0.5">
-                          {found.hintUsed && 'hinted · '}{found.points} pts
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-zinc-700">???</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-
-          {extraFound.length > 0 && (
-            <div className="pt-3 mt-1 border-t border-zinc-800">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">+ Bonus</p>
-              <div className="space-y-2">
-                {extraFound.map(r => (
-                  <div key={r.id} className="rounded-lg px-3 py-2.5 text-sm bg-amber-950 border border-amber-800">
-                    <p className="text-amber-200 leading-snug break-words">★ {r.playerWords}</p>
-                    <p className="text-xs text-amber-700 mt-0.5">+{r.points} pts</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </aside>
-    </main>
+    <PlayScreen
+      game={game}
+      gridSize={gridSize}
+      coreRules={CORE_RULES}
+      extraFound={extraFound}
+      aiSpeech={aiSpeech}
+      playerTranscript={playerTranscript}
+      isRecording={isRecording}
+      isProcessing={isProcessing}
+      expression={expression}
+      canClickCell={(r, c) => {
+        const inBounds = r < 3 && c < 3
+        const cell = inBounds ? game.board[r][c] : null
+        return inBounds && !cell
+          && (game.status === 'playing' || game.status === 'catching')
+          && !isProcessing
+      }}
+      onCellClick={handleCellClick}
+    />
   )
 }

@@ -31,11 +31,12 @@ export default function RulesTablet({ coreRules, rulesFound, extraFound }: Props
                   {i + 1}
                 </span>
                 {found ? (
-                  <div key={found.playerWords} className="scratch-in min-w-0 flex-1">
+                  <div key={found.summary} className="scratch-in min-w-0 flex-1">
                     <p className="scratched break-words text-[19px] font-extrabold leading-[24px]">
-                      {found.playerWords}
+                      {found.summary}
                       {found.hintUsed && <HintScratch />}
                     </p>
+                    <YourWords words={found.playerWords} points={found.points} />
                   </div>
                 ) : (
                   <span className="min-w-0 flex-1" aria-label="not found yet" />
@@ -53,9 +54,12 @@ export default function RulesTablet({ coreRules, rulesFound, extraFound }: Props
               {extraFound.map(r => (
                 <li key={r.id} className="wax-groove scratch-in flex items-start gap-2.5 py-[6px]">
                   <Sprig />
-                  <p className="scratched min-w-0 flex-1 break-words text-[18px] font-extrabold leading-[23px]">
-                    {r.playerWords}
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="scratched break-words text-[18px] font-extrabold leading-[23px]">
+                      {r.playerWords}
+                    </p>
+                    <p className="scratched text-[13px] font-bold opacity-70">+{r.points} pts</p>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -63,6 +67,24 @@ export default function RulesTablet({ coreRules, rulesFound, extraFound }: Props
         )}
       </div>
     </section>
+  )
+}
+
+/** The player's full words, folded away under the summary; click to unfold. Plus the rule's points. */
+function YourWords({ words, points }: { words: string; points: number }) {
+  return (
+    <details className="wax-words group mt-0.5">
+      <summary className="scratched flex cursor-pointer select-none list-none items-center gap-1.5 text-[13px] font-bold opacity-70 hover:opacity-100">
+        <svg viewBox="0 0 10 10" width="9" height="9" className="transition-transform group-open:rotate-90" aria-hidden>
+          <path d="M3 1.5 L7.5 5 L3 8.5" fill="none" stroke="var(--scratch)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        your words
+        <span className="ml-auto pr-0.5 tabular-nums">{points} pts</span>
+      </summary>
+      <p className="scratched mt-1 break-words border-l-2 border-[rgba(242,217,166,0.35)] pl-2 text-[14px] font-semibold italic leading-[19px] opacity-85">
+        “{words}”
+      </p>
+    </details>
   )
 }
 
