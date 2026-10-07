@@ -9,7 +9,7 @@ export const MASCOT_EXPRESSIONS: MascotExpression[] = ['idle', 'listening', 'thi
 
 // Image slot: drop generated art at public/art/mascot-<expression>.png and flip this
 // flag to true. No runtime file checks — the SVG below is the default.
-export const USE_GENERATED_ART = false
+export const USE_GENERATED_ART = true
 
 const INK = 'var(--ink)'
 
